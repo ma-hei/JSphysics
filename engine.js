@@ -124,6 +124,33 @@ Simulation.prototype.quaternion_product(a,b){
 	
 }
 
+Simulation.prototype.cross_product(a,b){
+
+  var a1 = a[0];
+  var a2 = a[1];
+  var a3 = a[2];
+  var b1 = b[0];
+  var b2 = b[1];
+  var b3 = b[2];
+  var first = a2*b3-a3*b2;
+  var second = a3*b1-a1*b3;
+  var third = a1*b2-a2*b1;
+  return [first,second,third];
+
+}
+
+Simulation.prototype.compute_force_and_torque(rb){
+
+  var f = [1,1,0];
+  var r = new Array(3);
+  r[0] = 0.2;
+  r[1] = 0.2;
+  r[2] = 0;
+  
+  rb.torque = this.cross_product(r,f);   
+  
+}
+
 Simulation.prototype.DdtStateToArray(rb, xdot, idx){
 	xdot[idx+0] = rb.v[0];
 	xdot[idx+1] = rb.v[1];
