@@ -4,7 +4,7 @@ var RigidBody = function(){
 	this.mass = 10;
 	this.I_body = math.matrix([[1,0,0],[0,1,0],[0,0,1]]);
 	this.I_body_inv = math.matrix([[1,0,0],[0,1,0],[0,0,1]]);	
-	this.x = [20,20,0];
+	this.x = [100,100,0];
 	this.q = [0,0,0,1];
 	this.P = [0,0,0];
 	this.L = [0,0,0];
@@ -22,7 +22,8 @@ var Simulation = function(){
 	this.n_bodies = 1;
 	this.state_size = 13;
 	this.rigid_bodies = new Array(this.n_bodies);
-	
+	this.stepsize = 1;
+	this.allowed_error = 0.0001;
 }
 
 Simulation.prototype.quaterion_to_matrix = function(q){
@@ -170,13 +171,20 @@ Simulation.prototype.cross_product = function(a,b){
 
 Simulation.prototype.compute_force_and_torque = function(t, rb){
 
-  var f = [1,1,0];
-  var r = new Array(3);
-  r[0] = 0.002;
-  r[1] = 0.003;
-  r[2] = 0;
+  if (t<2){
+  	var f = [0.1,0.1,0];
+  	var r = new Array(3);
+  	r[0] = 0.02;
+  	r[1] = 0.03;
+  	r[2] = 0;
+
+  	rb.torque = this.cross_product(r,f);   
+	rb.force = f;
+  	return;
+  }
+  rb.force=[0,0,0];
+  rb.torque=[0,0,0];
   
-  rb.torque = this.cross_product(r,f);   
   
 }
 
@@ -218,12 +226,71 @@ Simulation.prototype.Dxdt = function(t, x, xdot){
 
 }
 
-Simulation.prototype.ode = function(x0, xFinal){
+Simulation.prototype.adapt_stepsize = function(x0, t){
 
-  xdot =  new Array(this.n_bodies * this.state_size);
-  this.Dxdt(0, x0, xdot);
+	temp = new Array(this.n_bodies * this.state_size);
+	this.Dxdt(t, x0, temp);
+	a = new Array(this.n_bodies * this.state_size);
+	for (var i=0; i<this.n_bodies * this.state_size; i++){
+		a[i] = x0[i]+this.stepsize*temp[i];
+	}
+
+	b = new Array(this.n_bodies * this.state_size);
+	for (var i=0; i<this.n_bodies * this.state_size; i++){
+		b[i] = x0[i]+0.5*this.stepsize*temp[i];
+	}
+
+	this.Dxdt(t, b, temp);
+	for (var i=0;i<this.n_bodies * this.state_size; i++){
+		b[i] = b[i]+0.5*this.stepsize*temp[i];
+	}
+
+	var error = 0;
+	for (var i=0;i<this.n_bodies * this.state_size; i++){
+		error = error + Math.abs(a[i]-b[i]);
+	}
+	error = Math.sqrt(error);
+	console.log("current error: "+error);
+	var new_stepsize = Math.sqrt(this.allowed_error/error) * this.stepsize;
+	console.log("new stepsize: " + 	new_stepsize);
+	this.stepsize = new_stepsize;
+}
+
+Simulation.prototype.ode = function(x0, xFinal,t, t_end){
+
+	this.adapt_stepsize(x0, t);
+
+	var current_time = t;
+	while(current_time<t_end){
+	
+	var step = Math.min(this.stepsize, t_end-current_time);
+		
+  temp = new Array(this.n_bodies * this.state_size);
+  k1 =  new Array(this.n_bodies * this.state_size);
+  this.Dxdt(t, x0, k1);
+
   for (var i=0;i<this.n_bodies * this.state_size; i++){
-	xFinal[i] = x0[i] + xdot[i];	
+	  temp[i] = x0[i] + step*(k1[i]/2);
+  }  
+  k2 = new Array(this.n_bodies * this.state_size);
+  this.Dxdt(t, temp, k2);
+
+  for (var i=0;i<this.n_bodies * this.state_size;i++){
+	  temp[i] = x0[i] + step*(k2[i]/2);
+  }
+  k3 = new Array(this.n_bodies * this.state_size);
+  this.Dxdt(t, temp, k3);
+
+  for (var i=0;i<this.n_bodies * this.state_sze;i++){
+	  temp[i] = x0[i]+step*(k3[i]);
+  }
+  k4 = new Array(this.n_bodies * this.state_size);
+  this.Dxdt(t, temp, k4);
+
+  for (var i=0;i<this.n_bodies * this.state_size; i++){
+	xFinal[i] = x0[i] + (1/6)*k1[i] + (1/3)*k2[i] + (1/3)*k3[i] + step*(1/6)*k4[i];
+  }
+ 	current_time+=step; 
   }
 }
 
@@ -236,7 +303,7 @@ Simulation.prototype.draw = function(callback){
   var x1 = this.rigid_bodies[0].x[0];
   var y1 = this.rigid_bodies[0].x[1];
   
-var w = 30;
+  var w = 30;
   var x_1 = -w/2;
   var y_1 = -w/2;
 
@@ -267,7 +334,7 @@ var w = 30;
  
   l2.setAttribute("x1",  math.subset(res, math.index(0,0))+x1);
   l2.setAttribute("y1",  math.subset(res, math.index(0,1))+y1);
-
+	
   temp = math.matrix([[x_3,y_3,0]]);
   res = math.multiply(temp, this.rigid_bodies[0].R);
  
@@ -288,14 +355,14 @@ var w = 30;
   
 }
 
-Simulation.prototype.make_step = function(){
+Simulation.prototype.make_step = function(t){
 	for (var i=0;i<this.state_size*this.n_bodies;i++){
 		this.x0[i] = this.xFinal[i];
 	}
-	this.ode(this.x0, this.xFinal);
+	this.ode(this.x0, this.xFinal, t, t+(1/24));
 	this.array_to_bodies(this.xFinal);
 	this.draw();
-	setTimeout(function(simulation){ simulation.make_step()}, 10, this);
+	setTimeout(function(simulation,t){ simulation.make_step(t)}, 1000/24, this,t+(1/24));
 }
 
 Simulation.prototype.run_simulation = function(){
@@ -306,6 +373,6 @@ Simulation.prototype.run_simulation = function(){
   this.init_states();
   this.bodies_to_array(this.xFinal);
 
-  this.make_step();
+  this.make_step(0);
   
 }
