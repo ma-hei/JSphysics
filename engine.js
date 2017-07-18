@@ -327,9 +327,56 @@ Simulation.prototype.runge_katta = function(){
 
 }
 
+Simulation.prototype.runge_katta_2 = function(x0, xFinal, current_time, stepsize){
+    var array_size = this.n_bodies * this.state_size;
+    var temp = new Array(array_size);
+		var k1 = new Array(array_size);
+    var k2 = new Array(array_size);
+    var k3 = new Array(array_size);
+    var k4 = new Array(array_size); 
+  	this.Dxdt(current_time, x0, k1);
+    for (var i=0; i<array_size; i++){
+      k1[i] = stepsize*k1[i];
+    }
+
+    // compute k2
+    for (var i=0;i<array_size;i++){
+      temp[i] = x0[i] + k1[i]/2;
+    }
+    this.Dxdt(current_time+stepsize/2, temp, k2);
+    for (var i=0; i<array_size; i++){
+      k2[i] = stepsize*k2[i];
+    }
+
+    // compute k3
+    for (var i=0;i<array_size;i++){
+      temp[i] = x0[i] + k2[i]/2;
+    }
+    this.Dxdt(current_time+stepsize/2, temp, k3);
+    for (var i=0; i<array_size; i++){
+      k3[i] = stepsize*k3[i];
+    }
+
+    // compute k4
+    for (var i=0;i<array_size;i++){
+      temp[i] = x0[i] + k3[i];
+    }
+    this.Dxdt(current_time+stepsize, temp, k4);
+    for (var i=0; i<array_size; i++){
+      k4[i] = stepsize*k4[i];
+    }
+
+    // compute xFinal
+    for (var i=0;i<array_size;i++){
+      xFinal[i] = x0[i] + (1/6)*k1[i] + (1/3)*k2[i] + (1/3)*k3[i] + (1/6)*k4[i];
+    }
+
+}
+
 Simulation.prototype.ode = function(x0, xFinal,t, t_end){
 
-	this.euler_step(x0, xFinal, t, t+this.time_step);
+	//this.euler_step_2(x0, xFinal, t, t+this.time_step);
+  this.runge_katta_2(x0, xFinal, t, this.time_step);
 }
 
 Simulation.prototype.draw_2 = function(callback){
