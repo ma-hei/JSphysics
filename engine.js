@@ -184,7 +184,6 @@ Simulation.prototype.compute_force_and_torque = function(t, rb){
 
   	rb.torque = this.cross_product(r,f);   
 	  rb.force = f;
-	  debugger;
   	return;
   } else {
   	var f=[4,4,0];
@@ -209,7 +208,6 @@ Simulation.prototype.DdtStateToArray = function(rb, xdot, idx){
 	qdot[2] = 0.5*qdot[2];
 	qdot[3] = 0.5*qdot[3];
 
-	debugger;
 	xdot[idx+3] = qdot[0];
 	xdot[idx+4] = qdot[1];
 	xdot[idx+5] = qdot[2];
@@ -274,7 +272,6 @@ Simulation.prototype.euler_step = function (x0, xFinal, t, t_end, stepsize){
 
 Simulation.prototype.euler_step_2 = function(x0, xFinal, t, t_end){
 	var current_time = t;
-	//console.log(this.stepsize);
 	for (var i=0;i<this.n_bodies*this.state_size;i++){
 		xFinal[i] = x0[i];
 	}
@@ -290,48 +287,7 @@ Simulation.prototype.euler_step_2 = function(x0, xFinal, t, t_end){
 	}
 }
 
-Simulation.prototype.runge_katta = function(){
-
-	var current_time = t;
-	while(current_time<t_end){
-		var step = Math.min(this.stepsize, t_end-current_time);
-		
-		temp = new Array(this.n_bodies * this.state_size);
-		k1 =  new Array(this.n_bodies * this.state_size);
-  		this.Dxdt(current_time, x0, k1);
-
-  		for (var i=0;i<this.n_bodies * this.state_size; i++){
-	  		temp[i] = x0[i] + step*(k1[i]/2);
-  		}  
-  		k2 = new Array(this.n_bodies * this.state_size);
-  		this.Dxdt(current_time, temp, k2);
-
-  		for (var i=0;i<this.n_bodies * this.state_size;i++){
-	  		temp[i] = x0[i] + step*(k2[i]/2);
-  		}
-  		k3 = new Array(this.n_bodies * this.state_size);
-  		this.Dxdt(current_time, temp, k3);
-
-  		for (var i=0;i<this.n_bodies * this.state_sze;i++){
-	  		temp[i] = x0[i]+step*(k3[i]);
-  		}
-  		k4 = new Array(this.n_bodies * this.state_size);
-  		this.Dxdt(current_time, temp, k4);
-
-  		for (var i=0;i<this.n_bodies * this.state_size; i++){
-			xFinal[i] = x0[i] + (1/6)*k1[i] + (1/3)*k2[i] + (1/3)*k3[i] + step*(1/6)*k4[i];
-  		}
-
-  		for (var i=0;i<this.n_bodies * this.state_size; i++){
-			x0[i] = xFinal[i];
-  		}
-
- 		current_time+=step; 
-  	}
-
-}
-
-Simulation.prototype.runge_katta_2 = function(x0, xFinal, current_time, stepsize){
+Simulation.prototype.runge_katta = function(x0, xFinal, current_time, stepsize){
     var array_size = this.n_bodies * this.state_size;
     var temp = new Array(array_size);
 		var k1 = new Array(array_size);
@@ -379,9 +335,9 @@ Simulation.prototype.runge_katta_2 = function(x0, xFinal, current_time, stepsize
 
 Simulation.prototype.ode = function(x0, xFinal,t, t_end){
 
-	//this.euler_step_2(x0, xFinal, t, t+this.time_step);
-  this.runge_katta_2(x0, xFinal, t, this.time_step);
+  this.runge_katta(x0, xFinal, t, this.time_step);
   this.compare_error(x0,t);
+
 }
 
 Simulation.prototype.compare_error = function(x0, t){
@@ -417,67 +373,6 @@ Simulation.prototype.compare_error = function(x0, t){
 
 }
 
-Simulation.prototype.draw_2 = function(callback){
-  var l1 = document.getElementById("l1");
-  var l2 = document.getElementById("l2");
-  var l3 = document.getElementById("l3");
-  var l4 = document.getElementById("l4");
-
-  var x1 = this.rigid_bodies[0].x[0];
-  var y1 = this.rigid_bodies[0].x[1];
-  
-  var w = 30;
-  var x_1 = -w/2;
-  var y_1 = -w/2;
-
-  var x_2 = w/2;
-  var y_2 = -w/2;
-
-  var x_3 = w/2;
-  var y_3 = w/2;
-
-  var x_4 = -w/2;
-  var y_4 = w/2;
-
-
-  temp = math.matrix([[x_1,y_1,0]]);
-  res = math.multiply(temp, this.rigid_bodies[0].R);
-
-  l1.setAttribute("x1",  math.subset(res, math.index(0,0))+x1);
-  l1.setAttribute("y1",  math.subset(res, math.index(0,1))+y1);
-
-  l4.setAttribute("x2",  math.subset(res, math.index(0,0))+x1);
-  l4.setAttribute("y2",  math.subset(res, math.index(0,1))+y1);
-
-  temp = math.matrix([[x_2,y_2,0]]);
-  res = math.multiply(temp, this.rigid_bodies[0].R);
-
-  l1.setAttribute("x2",  math.subset(res, math.index(0,0))+x1);
-  l1.setAttribute("y2",  math.subset(res, math.index(0,1))+y1);
- 
-  l2.setAttribute("x1",  math.subset(res, math.index(0,0))+x1);
-  l2.setAttribute("y1",  math.subset(res, math.index(0,1))+y1);
-	
-  temp = math.matrix([[x_3,y_3,0]]);
-  res = math.multiply(temp, this.rigid_bodies[0].R);
- 
-  l2.setAttribute("x2",  math.subset(res, math.index(0,0))+x1);
-  l2.setAttribute("y2",  math.subset(res, math.index(0,1))+y1);
- 
-  l3.setAttribute("x1",  math.subset(res, math.index(0,0))+x1);
-  l3.setAttribute("y1",  math.subset(res, math.index(0,1))+y1);
-
-  temp = math.matrix([[x_4,y_4,0]]);
-  res = math.multiply(temp, this.rigid_bodies[0].R);
-   
-  l3.setAttribute("x2",  math.subset(res, math.index(0,0))+x1);
-  l3.setAttribute("y2",  math.subset(res, math.index(0,1))+y1);
- 
-  l4.setAttribute("x1",  math.subset(res, math.index(0,0))+x1);
-  l4.setAttribute("y1",  math.subset(res, math.index(0,1))+y1);
-  
-}
-
 Simulation.prototype.draw = function(){
 
   var x1 = this.rigid_bodies[0].x[0];
@@ -495,25 +390,23 @@ Simulation.prototype.draw = function(){
 	temp[15] = 1;
 
 	gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
+  mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0, pMatrix);
 
-        mat4.identity(mvMatrix);
+  mat4.identity(mvMatrix);
 
-	//mat4.rotate(mvMatrix, degToRad(180), [0,1,0]);
-        mat4.translate(mvMatrix, [x1, y1, -80.0]);
+  mat4.translate(mvMatrix, [x1, y1, -80.0]);
 
 	mvPushMatrix();
 	
 	mat4.multiply(mvMatrix, temp, mvMatrix);
-debugger;
-        gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
-        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, squareVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
-        setMatrixUniforms();
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, squareVertexPositionBuffer.numItems);
+  gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
+  gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, squareVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+  setMatrixUniforms();
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, squareVertexPositionBuffer.numItems);
 	mvPopMatrix();
-debugger;	
+
 }
 
 Simulation.prototype.make_step = function(t){
