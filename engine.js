@@ -344,12 +344,12 @@ Simulation.prototype.compare_error = function(x0, t){
 
   var array_size = this.n_bodies * this.state_size;
   var temp = new Array(array_size);
-  this.runge_katta_2(x0, temp, t, this.time_step);
+  this.runge_katta(x0, temp, t, this.time_step);
   
   var temp2 = new Array(array_size);
-  this.runge_katta_2(x0, temp2, t, this.time_step/2);
+  this.runge_katta(x0, temp2, t, this.time_step/2);
   var temp3 = new Array(array_size);
-  this.runge_katta_2(temp2, temp3, t+this.time_step/2, this.time_step/2);
+  this.runge_katta(temp2, temp3, t+this.time_step/2, this.time_step/2);
 
   var error = 0;
   for (var i=0; i<array_size; i++){
