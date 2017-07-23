@@ -14,12 +14,16 @@ var RigidBody = function(){
 	this.omega = [0,0,0];
 	this.force = [0,0,0];
 	this.torque = [0,0,0];
+  this.vertices = math.matrix([[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0]]);  
+  this.translated_vertices;
+  this.floor = false;
+
 }
 
 
 var Simulation = function(){
 
-	this.n_bodies = 1;
+	this.n_bodies = 2;
 	this.state_size = 13;
 	this.rigid_bodies = new Array(this.n_bodies);
 	this.stepsize = 1/60;
@@ -55,7 +59,10 @@ Simulation.prototype.init_states = function(){
 	for (var i=0;i<this.n_bodies;i++){
 		this.rigid_bodies[i] = new RigidBody();
 	}
-	
+  
+  this.rigid_bodies[1].x = [0,-5,0];
+  this.rigid_bodies[1].vertices = math.matrix([[10,1,0],[-10,1,0],[10,-1,0],[-10,-1,0]]);  
+  this.rigid_bodies[1].floor = true;
 }
 
 Simulation.prototype.state_to_array = function(rb, y, idx){
@@ -113,8 +120,9 @@ Simulation.prototype.array_to_state = function(rb, y, idx){
 	rb.v[1] = rb.P[1]/rb.mass;
 	rb.v[2] = rb.P[2]/rb.mass;
 
-	debugger;
 	rb.R = this.quaterion_to_matrix(this.normalize_quaterion(rb.q));
+  
+  this.set_translated_vertices(rb);
 	
 	rb.I_inv = math.multiply(math.multiply(rb.R,rb.I_body_inv), math.transpose(rb.R));
 
@@ -175,6 +183,7 @@ Simulation.prototype.cross_product = function(a,b){
 
 Simulation.prototype.compute_force_and_torque = function(t, rb){
 
+  if (!rb.floor){
   if (t<0.5){
   	var f = [4,-9,0];
   	var r = new Array(3);
@@ -191,6 +200,7 @@ Simulation.prototype.compute_force_and_torque = function(t, rb){
 
   	rb.torque = this.cross_product(r,f);   
 	  rb.force = f;
+  }
   }
   
 }
@@ -235,7 +245,7 @@ Simulation.prototype.Dxdt = function(t, x, xdot){
 
 Simulation.prototype.adapt_stepsize = function(x0, t){
 	temp = new Array(this.n_bodies * this.state_size);
-	debugger;
+
 	this.Dxdt(t, x0, temp);
 	a = new Array(this.n_bodies * this.state_size);
 	for (var i=0; i<this.n_bodies * this.state_size; i++){
@@ -246,7 +256,6 @@ Simulation.prototype.adapt_stepsize = function(x0, t){
 	for (var i=0; i<this.n_bodies * this.state_size; i++){
 		b[i] = x0[i]+0.5*this.stepsize*temp[i];
 	}
-	debugger;
 	this.Dxdt(t+(this.stepsize), b, temp);
 	for (var i=0;i<this.n_bodies * this.state_size; i++){
 		b[i] = b[i]+0.5*this.stepsize*temp[i];
@@ -334,7 +343,9 @@ Simulation.prototype.runge_katta = function(x0, xFinal, current_time, stepsize){
 }
 
 Simulation.prototype.ode = function(x0, xFinal,t, t_end){
-
+  
+   
+  this.collision_detection();
   this.runge_katta(x0, xFinal, t, this.time_step);
   this.compare_error(x0,t);
 
@@ -373,22 +384,90 @@ Simulation.prototype.compare_error = function(x0, t){
 
 }
 
+Simulation.prototype.set_translated_vertices = function(rb){
+  
+    vertices = math.transpose(math.multiply(rb.R, math.transpose(rb.vertices)));
+    
+    rb.translated_vertices = [[],[],[]];
+    for (var i=0; i<vertices._data.length; i++){
+      rb.translated_vertices[i] = [0,0,0];
+      rb.translated_vertices[i][0] = vertices._data[i][0] + rb.x[0];
+      rb.translated_vertices[i][1] = vertices._data[i][1] + rb.x[1];
+    }
+}
+
+Simulation.prototype.get_axes = function(rb){
+  axes = [];
+  
+  vs = rb.translated_vertices; 
+  n_vertices = rb.vertices._data.length;
+  for (var i=0; i<n_vertices; i++){
+    edge = [ vs[i][0] - vs[i+1==n_vertices ? 0 : i+1][0], vs[i][1] - vs[i+1==n_vertices ? 0 : i+1][1], 0];
+    normal = [-1 * edge[1], edge[0], 0];
+    axes.push(normal);
+  }
+  return axes;
+}
+
+Simulation.prototype.do_axes_overlap = function (axis_a, axis_b){
+  if (axis_a[1] < axis_b[0] || axis_b[1] < axis_a[0]) return false;
+  else return true;
+}
+
+Simulation.prototype.normalize_axis = function(axis){
+  a = axis[0];
+  b = axis[1];
+  length = Math.sqrt(a*a+b*b);
+  return [a/length, b/length, 0];
+}
+
+Simulation.prototype.project = function(rb, axis){
+  axis = this.normalize_axis(axis);
+  min = this.dot_product(axis, rb.translated_vertices[0]);
+  max = min;
+  for (var i=1; i<rb.translated_vertices.length; i++){
+    p = this.dot_product(axis, rb.translated_vertices[i]);
+    if (p<min){
+      min = p;
+    } else if (p > max){
+      max = p;
+    }
+  } 
+  return [min,max];
+}
+
+Simulation.prototype.check_overlap = function(a,b){
+  axes_a = this.get_axes(a);
+  axes_b = this.get_axes(b);
+  for (var i=0; i< axes_a.length; i++){
+    axis = axes_a[i];
+    p1 = this.project(a, axis);
+    p2 = this.project(b, axis);
+    if (!this.do_axes_overlap(p1,p2)) return false;
+  } 
+
+  for (var i=0; i< axes_a.length; i++){
+    axis = axes_b[i];
+    p1 = this.project(a, axis);
+    p2 = this.project(b, axis);
+    if (!this.do_axes_overlap(p1,p2)) return false;
+  }
+  return true;
+}
+
+Simulation.prototype.collision_detection = function(){
+  for (var i=0;i<this.n_bodies-1;i++){
+    for (var k=i+1;k<this.n_bodies;k++){
+      if (this.check_overlap(this.rigid_bodies[i], this.rigid_bodies[k])){
+        debugger;
+        console.log("collision!!!");
+      }
+    }
+  }
+}
+
 Simulation.prototype.draw = function(){
-
-  var x1 = this.rigid_bodies[0].x[0];
-  var y1 = this.rigid_bodies[0].x[1];
-	
-	var temp = this.rigid_bodies[0].R;
-	var temp = mat4.create();
-	temp[0] = math.subset(this.rigid_bodies[0].R, math.index(0,0));
-	temp[1] = math.subset(this.rigid_bodies[0].R, math.index(0,1));
-	temp[2] = math.subset(this.rigid_bodies[0].R, math.index(0,2));
-	temp[4] = math.subset(this.rigid_bodies[0].R, math.index(1,0));
-	temp[5] = math.subset(this.rigid_bodies[0].R, math.index(1,1));
-	temp[6] = math.subset(this.rigid_bodies[0].R, math.index(1,2));
-	temp[11] = 1;
-	temp[15] = 1;
-
+ 	
 	gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -396,16 +475,27 @@ Simulation.prototype.draw = function(){
 
   mat4.identity(mvMatrix);
 
-  mat4.translate(mvMatrix, [x1, y1, -80.0]);
+ 
+  for (var i=0;i<this.n_bodies;i++){
 
-	mvPushMatrix();
-	
-	mat4.multiply(mvMatrix, temp, mvMatrix);
-  gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
-  gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, squareVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
-  setMatrixUniforms();
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, squareVertexPositionBuffer.numItems);
-	mvPopMatrix();
+    mvPushMatrix();
+    var x1 = this.rigid_bodies[i].x[0];
+    var y1 = this.rigid_bodies[i].x[1];
+    
+    mat4.translate(mvMatrix, [x1, y1, -80.0]);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
+
+    vertices = math.transpose(math.multiply(this.rigid_bodies[i].R, math.transpose(this.rigid_bodies[i].vertices)));
+    vertices = math.flatten(vertices)._data;
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+ 
+    gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, squareVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    setMatrixUniforms();
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, squareVertexPositionBuffer.numItems);
+    mvPopMatrix();
+
+  }
 
 }
 
@@ -429,6 +519,8 @@ Simulation.prototype.run_simulation = function(){
 
   this.init_states();
   this.bodies_to_array(this.xFinal);
+  //calling this to compute the translated vertices
+  this.array_to_bodies(this.xFinal);  
 
   this.make_step(0);
   
