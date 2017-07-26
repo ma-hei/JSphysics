@@ -1,3 +1,10 @@
+var Contact = function(){
+  this.idx_a; //containing vertex
+  this.idx_b; //containing face
+  this.idx_v;
+  this.p;
+  this.n;
+}
 
 var RigidBody = function(){
 	
@@ -414,6 +421,10 @@ Simulation.prototype.do_axes_overlap = function (axis_a, axis_b){
   else return true;
 }
 
+Simulation.prototype.get_overlap = function(a,b){
+  return a[1]<b[1] ? a[1]-b[0] : b[1]-a[0];
+}
+
 Simulation.prototype.normalize_axis = function(axis){
   a = axis[0];
   b = axis[1];
@@ -436,31 +447,99 @@ Simulation.prototype.project = function(rb, axis){
   return [min,max];
 }
 
-Simulation.prototype.check_overlap = function(a,b){
+Simulation.prototype.get_projection_max = function(rb, axis){
+  axis = this.normalize_axis(axis);
+  max = this.dot_product(axis, rb.translated_vertices[0]);
+  max_idx = 0;
+  for (var i=1; i<rb.translated_vertices.length; i++){
+    p = this.dot_product(axis, rb.translated_vertices[i]);
+    if (p > max){
+      max = p;
+      max_idx = i;
+    }
+  } 
+  return max_idx;
+}
+
+Simulation.prototype.get_projection_min = function(rb, axis){
+  axis = this.normalize_axis(axis);
+  min = this.dot_product(axis, rb.translated_vertices[0]);
+  min_idx = 0;
+  for (var i=1; i<rb.translated_vertices.length; i++){
+    p = this.dot_product(axis, rb.translated_vertices[i]);
+    if (p<min){
+      min = p;
+      min_idx = i;
+    }
+  } 
+  return min_idx;
+}
+
+Simulation.prototype.get_colliding_vertex = function(m, f, smallest){
+ pm = this.project(m, smallest);
+ pf = this.project(f, smallest);
+ if (pm[1]<pf[1]){
+  idx = this.get_projection_max(m, smallest);
+ }
+ else{
+  idx = this.get_projection_min(m, smallest);
+ }
+ return idx; 
+}
+
+Simulation.prototype.check_overlap = function(a,b, idx_a, idx_b){
   axes_a = this.get_axes(a);
   axes_b = this.get_axes(b);
+  overlap = 10000;
+  smallest = null;
   for (var i=0; i< axes_a.length; i++){
     axis = axes_a[i];
     p1 = this.project(a, axis);
     p2 = this.project(b, axis);
-    if (!this.do_axes_overlap(p1,p2)) return false;
+    if (!this.do_axes_overlap(p1,p2)) return [ false, null];
+    else{
+      o = this.get_overlap(p1,p2);
+      if (o<overlap){
+        penetrated_body = a;
+        penetrating_body = b;
+        overlap = o;
+        smallest = axis;       
+      }
+    }
   } 
 
-  for (var i=0; i< axes_a.length; i++){
+  for (var i=0; i< axes_b.length; i++){
     axis = axes_b[i];
     p1 = this.project(a, axis);
     p2 = this.project(b, axis);
-    if (!this.do_axes_overlap(p1,p2)) return false;
+    if (!this.do_axes_overlap(p1,p2)) return [ false, null];
+    else {
+      o = this.get_overlap(p1,p2);
+      if (o<overlap){
+        penetrated_body = b;
+        penetrating_body = a;
+        overlap = o;
+        smallest = axis;
+      }
+    }
   }
-  return true;
+  debugger;
+  idx = this.get_colliding_vertex(penetrating_body, penetrated_body, smallest);
+  c = new Contact();
+  c.idx_a = penetrating_body===a ? idx_a : idx_b;
+  c.idx_b = penetrating_body===a ? idx_b : idx_a;
+  c.idx_v = idx;
+  c.v = smallest;
+  return [true, c];
 }
 
 Simulation.prototype.collision_detection = function(){
   for (var i=0;i<this.n_bodies-1;i++){
     for (var k=i+1;k<this.n_bodies;k++){
-      if (this.check_overlap(this.rigid_bodies[i], this.rigid_bodies[k])){
+      res = this.check_overlap(this.rigid_bodies[i], this.rigid_bodies[k], i, k);
+      if (res[0]==true){
         debugger;
-        console.log("collision!!!");
+      
       }
     }
   }
