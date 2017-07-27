@@ -21,7 +21,7 @@ var RigidBody = function(){
 	this.omega = [0,0,0];
 	this.force = [0,0,0];
 	this.torque = [0,0,0];
-  this.vertices = math.matrix([[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0]]);  
+  this.vertices = math.matrix([[1,1,0],[-1,1,0],[-1,-1,0],[1,-1,0]]);  
   this.translated_vertices;
   this.floor = false;
 
@@ -68,7 +68,7 @@ Simulation.prototype.init_states = function(){
 	}
   
   this.rigid_bodies[1].x = [0,-5,0];
-  this.rigid_bodies[1].vertices = math.matrix([[10,1,0],[-10,1,0],[10,-1,0],[-10,-1,0]]);  
+  this.rigid_bodies[1].vertices = math.matrix([[10,1,0],[-10,1,0],[-10,-1,0],[10,-1,0]]);  
   this.rigid_bodies[1].floor = true;
 }
 
@@ -403,10 +403,14 @@ Simulation.prototype.set_translated_vertices = function(rb){
     }
 }
 
+Simulation.prototype.vector_length = function(v){
+  return Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+}
+
 Simulation.prototype.get_axes = function(rb){
   axes = [];
-  
   vs = rb.translated_vertices; 
+
   n_vertices = rb.vertices._data.length;
   for (var i=0; i<n_vertices; i++){
     edge = [ vs[i][0] - vs[i+1==n_vertices ? 0 : i+1][0], vs[i][1] - vs[i+1==n_vertices ? 0 : i+1][1], 0];
@@ -523,14 +527,30 @@ Simulation.prototype.check_overlap = function(a,b, idx_a, idx_b){
       }
     }
   }
-  debugger;
   idx = this.get_colliding_vertex(penetrating_body, penetrated_body, smallest);
   c = new Contact();
   c.idx_a = penetrating_body===a ? idx_a : idx_b;
-  c.idx_b = penetrating_body===a ? idx_b : idx_a;
+  c.idx_b = penetrated_body===a ? idx_a : idx_b;
   c.idx_v = idx;
-  c.v = smallest;
+  c.v = this.make_collision_normal_point_out(penetrated_body, penetrating_body.translated_vertices[idx], smallest);
+  
   return [true, c];
+}
+
+Simulation.prototype.subtract_vectors = function(a,b){
+  return [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+}
+
+Simulation.prototype.add_vectors = function(a,b){
+  return [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
+}
+
+Simulation.prototype.make_collision_normal_point_out = function(rb, v, normal){
+  center = rb.x;
+  temp = this.subtract_vectors(this.add_vectors(v,normal),center);
+  temp2 = this.subtract_vectors(this.subtract_vectors(v,normal),center);
+  if (this.vector_length(temp)>this.vector_length(temp2)) return normal;
+  else return [-1*normal[0], -1*normal[1], -1*normal[2]];  
 }
 
 Simulation.prototype.collision_detection = function(){
@@ -538,8 +558,7 @@ Simulation.prototype.collision_detection = function(){
     for (var k=i+1;k<this.n_bodies;k++){
       res = this.check_overlap(this.rigid_bodies[i], this.rigid_bodies[k], i, k);
       if (res[0]==true){
-        debugger;
-      
+        debugger; 
       }
     }
   }
@@ -566,6 +585,10 @@ Simulation.prototype.draw = function(){
     gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
 
     vertices = math.transpose(math.multiply(this.rigid_bodies[i].R, math.transpose(this.rigid_bodies[i].vertices)));
+    //swap 3rd and 4th to allow triangle drawing
+    temp = vertices._data[2];
+    vertices._data[2] = vertices._data[3];
+    vertices._data[3] = temp;
     vertices = math.flatten(vertices)._data;
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
  
