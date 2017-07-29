@@ -37,6 +37,7 @@ var Simulation = function(){
 	this.time_step = 1/60;
 	this.allowed_error = 0.001;
 	this.steps_taken = 0;
+  this.overlaps = [];
 }
 
 Simulation.prototype.quaterion_to_matrix = function(q){
@@ -132,6 +133,7 @@ Simulation.prototype.array_to_state = function(rb, y, idx){
   this.set_translated_vertices(rb);
 	
 	rb.I_inv = math.multiply(math.multiply(rb.R,rb.I_body_inv), math.transpose(rb.R));
+  rb.I_inv = rb.floor ? math.matrix([[0,0,0],[0,0,0],[0,0,0]]) : rb.I_inv;
 
 	rb.omega = math.multiply(rb.I_inv,rb.L);
 
@@ -350,40 +352,42 @@ Simulation.prototype.runge_katta = function(x0, xFinal, current_time, stepsize){
 }
 
 Simulation.prototype.collision = function(c, epsilon){
+  debugger;
   padot = this.pt_velocity(c.a, c.p);
   pbdot = this.pt_velocity(c.b, c.p);
   n = c.n;
-  ra = this.subtract_vectors(c.p-c.a.x);
-  rb = this.subtract_vectors(c.p-c.b.x);
-  vrel = this.dot_product(c.n, this.subtract_vectors(pdot, pbdot));
+  ra = this.subtract_vectors(c.p,c.a.x);
+  rb = this.subtract_vectors(c.p,c.b.x);
+  vrel = this.dot_product(c.n, this.subtract_vectors(padot, pbdot));
   numerator = -1*(1+epsilon) * vrel;
   term1 = c.a.floor ? 0 : 1/c.a.mass;
   term2 = c.b.floor ? 0 : 1/c.b.mass;
-  debugger; 
+  debugger;
+  term3 = math.multiply(c.a.I_inv, this.cross_product(ra,n));
+  term4 = math.multiply(c.b.I_inv, this.cross_product(rb,n));
+  j = 
 }
 
 Simulation.prototype.find_all_collisions = function(contacts){
+  debugger;
   had_collision = false;
   for (var i=0; i<contacts.length; i++){
-    debugger;
     if (this.colliding(contacts[i])){
-      
+      this.collision(contacts[i]);  
     }
   }
 }
 
 Simulation.prototype.ode = function(x0, xFinal,t, t_end){
   
-   
   this.runge_katta(x0, xFinal, t, this.time_step);
   this.compare_error(x0,t);
-  overlaps = this.collision_detection(); 
-  if (overlaps.length>0){
-    debugger;
+  this.overlaps = this.collision_detection(); 
+  if (this.overlaps.length>0){
     for (var i=0;i<xFinal.length;i++){
       xFinal[i] = x0[i];
     }
-    this.find_all_collisions(overlaps); 
+    this.find_all_collisions(this.overlaps); 
   }
 }
 
@@ -561,7 +565,6 @@ Simulation.prototype.check_overlap = function(a,b, idx_a, idx_b){
   c.a = penetrating_body===a ? a : b;
   c.b = penetrated_body===a ? a : b;
   c.p = penetrating_body.translated_vertices[idx];
-  debugger;
   c.n = this.make_collision_normal_point_out(penetrated_body, penetrating_body.translated_vertices[idx], smallest);
   c.n = this.normalize_vector(c.n); 
   return [true, c];
@@ -602,12 +605,10 @@ Simulation.prototype.collision_detection = function(){
 }
 
 Simulation.prototype.pt_velocity = function(rb, p){
-  debugger;
  return this.add_vectors(rb.v, this.cross_product(rb.omega._data, this.subtract_vectors(p, rb.x)));
 }
 
 Simulation.prototype.colliding = function(c){
-debugger;
   threshold = 0.000001;
   padot = this.pt_velocity(c.a, c.p);
   pbdot = this.pt_velocity(c.b, c.p);
