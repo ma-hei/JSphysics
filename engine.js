@@ -353,6 +353,7 @@ Simulation.prototype.runge_katta = function(x0, xFinal, current_time, stepsize){
 
 Simulation.prototype.collision = function(c, epsilon){
   debugger;
+  this.colll=true;
   padot = this.pt_velocity(c.a, c.p);
   pbdot = this.pt_velocity(c.b, c.p);
   n = c.n;
@@ -362,10 +363,19 @@ Simulation.prototype.collision = function(c, epsilon){
   numerator = -1*(1+epsilon) * vrel;
   term1 = c.a.floor ? 0 : 1/c.a.mass;
   term2 = c.b.floor ? 0 : 1/c.b.mass;
-  debugger;
-  term3 = math.multiply(c.a.I_inv, this.cross_product(ra,n));
-  term4 = math.multiply(c.b.I_inv, this.cross_product(rb,n));
-  j = 
+  term3 = this.dot_product(n,this.cross_product(math.multiply(c.a.I_inv, this.cross_product(ra,n))._data,ra));
+  term4 = this.dot_product(n,this.cross_product(math.multiply(c.b.I_inv, this.cross_product(rb,n))._data,rb));
+  j = numerator / (term1 + term2 + term3 + term4);
+  force = [j*n[0], j*n[1], j*n[2]];  
+  c.a.P = this.add_vectors(c.a.P, force);
+  c.b.P = this.subtract_vectors(c.b.P, force);
+  c.a.L = this.add_vectors(c.a.L, this.cross_product(ra,force));
+  c.b.L = this.subtract_vectors(c.b.L, this.cross_product(rb,force));
+  c.a.v = [c.a.floor ? 0 : c.a.P[0]/c.a.mass, c.a.floor ? 0 : c.a.P[1]/c.a.mass, c.a.floor ? 0 : c.a.P[2]/c.a.mass];
+  c.b.v = [c.b.floor ? 0 : c.b.P[0]/c.b.mass, c.b.floor ? 0 : c.b.P[1]/c.b.mass, c.b.floor ? 0 :c.b.P[2]/c.b.mass];
+  c.a.omega = math.multiply(c.a.I_inv,c.a.L);
+  c.b.omega = math.multiply(c.b.I_inv,c.b.L);
+  debugger; 
 }
 
 Simulation.prototype.find_all_collisions = function(contacts){
@@ -373,21 +383,24 @@ Simulation.prototype.find_all_collisions = function(contacts){
   had_collision = false;
   for (var i=0; i<contacts.length; i++){
     if (this.colliding(contacts[i])){
-      this.collision(contacts[i]);  
+      this.collision(contacts[i],0.9);  
     }
   }
+  debugger;
 }
 
 Simulation.prototype.ode = function(x0, xFinal,t, t_end){
   
+  if (this.colll) debugger;
   this.runge_katta(x0, xFinal, t, this.time_step);
   this.compare_error(x0,t);
   this.overlaps = this.collision_detection(); 
   if (this.overlaps.length>0){
     for (var i=0;i<xFinal.length;i++){
-      xFinal[i] = x0[i];
+      //xFinal[i] = x0[i];
     }
     this.find_all_collisions(this.overlaps); 
+    
   }
 }
 
