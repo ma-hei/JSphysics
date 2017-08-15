@@ -101,7 +101,8 @@ Simulation.prototype.normalize_quaterion = function(q){
 	var vz = q[3];
 
 	var length = math.sqrt(s*s+vx*vx+vy*vy+vz*vz);
-	return([s/length,-1*vx/length,-1*vy/length,-1*vz/length]);
+	return([s/length,vx/length,vy/length,vz/length]);
+	//return([s/length,-1*vx/length,-1*vy/length,-1*vz/length]);
 }
 
 
@@ -124,9 +125,9 @@ Simulation.prototype.array_to_state = function(rb, y, idx){
 	rb.L[1] = y[idx+11];
 	rb.L[2] = y[idx+12];
 
-	rb.v[0] = rb.P[0]/rb.mass;
-	rb.v[1] = rb.P[1]/rb.mass;
-	rb.v[2] = rb.P[2]/rb.mass;
+	rb.v[0] = rb.floor ? 0 : rb.P[0]/rb.mass;
+	rb.v[1] = rb.floor ? 0 : rb.P[1]/rb.mass;
+	rb.v[2] = rb.floor ? 0 : rb.P[2]/rb.mass;
 
 	rb.R = this.quaterion_to_matrix(this.normalize_quaterion(rb.q));
   
@@ -192,11 +193,10 @@ Simulation.prototype.cross_product = function(a,b){
 
 Simulation.prototype.compute_force_and_torque = function(t, rb){
 
-  if (!rb.floor){
-  if (t<5){
+  if (!rb.floor && t<0.1){
   	var f = [0,-9,0];
   	var r = new Array(3);
-  	r[0] = 0.001;
+  	r[0] = 0.7;
   	r[1] = 1;
   	r[2] = 0;
 
@@ -204,13 +204,9 @@ Simulation.prototype.compute_force_and_torque = function(t, rb){
 	  rb.force = f;
   	return;
   } else {
-  	var f=[4,4,0];
-  	var r=[2,-1,0];
-
-  	rb.torque = this.cross_product(r,f);   
-	  rb.force = f;
-  }
-  }
+    rb.torque = [0,0,0];
+    rb.force = [0,-9,0];
+  } 
   
 }
 
@@ -240,16 +236,6 @@ Simulation.prototype.DdtStateToArray = function(rb, xdot, idx){
 	xdot[idx+11] = rb.torque[1];
 	xdot[idx+12] = rb.torque[2];
 	
-}
-
-Simulation.prototype.Dxdt = function(t, x, xdot){
-
-	this.array_to_bodies(x);
-	for (var i=0; i<this.n_bodies; i++){
-		this.compute_force_and_torque(t, this.rigid_bodies[i]);
-		this.DdtStateToArray(this.rigid_bodies[i], xdot, i*this.state_size);
-	}
-
 }
 
 Simulation.prototype.adapt_stepsize = function(x0, t){
@@ -305,55 +291,8 @@ Simulation.prototype.euler_step_2 = function(x0, xFinal, t, t_end){
 	}
 }
 
-Simulation.prototype.runge_katta = function(x0, xFinal, current_time, stepsize){
-    var array_size = this.n_bodies * this.state_size;
-    var temp = new Array(array_size);
-		var k1 = new Array(array_size);
-    var k2 = new Array(array_size);
-    var k3 = new Array(array_size);
-    var k4 = new Array(array_size); 
-  	this.Dxdt(current_time, x0, k1);
-    for (var i=0; i<array_size; i++){
-      k1[i] = stepsize*k1[i];
-    }
-
-    // compute k2
-    for (var i=0;i<array_size;i++){
-      temp[i] = x0[i] + k1[i]/2;
-    }
-    this.Dxdt(current_time+stepsize/2, temp, k2);
-    for (var i=0; i<array_size; i++){
-      k2[i] = stepsize*k2[i];
-    }
-
-    // compute k3
-    for (var i=0;i<array_size;i++){
-      temp[i] = x0[i] + k2[i]/2;
-    }
-    this.Dxdt(current_time+stepsize/2, temp, k3);
-    for (var i=0; i<array_size; i++){
-      k3[i] = stepsize*k3[i];
-    }
-
-    // compute k4
-    for (var i=0;i<array_size;i++){
-      temp[i] = x0[i] + k3[i];
-    }
-    this.Dxdt(current_time+stepsize, temp, k4);
-    for (var i=0; i<array_size; i++){
-      k4[i] = stepsize*k4[i];
-    }
-
-    // compute xFinal
-    for (var i=0;i<array_size;i++){
-      xFinal[i] = x0[i] + (1/6)*k1[i] + (1/3)*k2[i] + (1/3)*k3[i] + (1/6)*k4[i];
-    }
-
-}
-
 Simulation.prototype.collision = function(c, epsilon){
   debugger;
-  this.colll=true;
   padot = this.pt_velocity(c.a, c.p);
   pbdot = this.pt_velocity(c.b, c.p);
   n = c.n;
@@ -372,36 +311,16 @@ Simulation.prototype.collision = function(c, epsilon){
   c.a.L = this.add_vectors(c.a.L, this.cross_product(ra,force));
   c.b.L = this.subtract_vectors(c.b.L, this.cross_product(rb,force));
   c.a.v = [c.a.floor ? 0 : c.a.P[0]/c.a.mass, c.a.floor ? 0 : c.a.P[1]/c.a.mass, c.a.floor ? 0 : c.a.P[2]/c.a.mass];
-  c.b.v = [c.b.floor ? 0 : c.b.P[0]/c.b.mass, c.b.floor ? 0 : c.b.P[1]/c.b.mass, c.b.floor ? 0 :c.b.P[2]/c.b.mass];
+  c.b.v = [c.b.floor ? 0 : c.b.P[0]/c.b.mass, c.b.floor ? 0 : c.b.P[1]/c.b.mass, c.b.floor ? 0 : c.b.P[2]/c.b.mass];
   c.a.omega = math.multiply(c.a.I_inv,c.a.L);
   c.b.omega = math.multiply(c.b.I_inv,c.b.L);
-  debugger; 
-}
-
-Simulation.prototype.find_all_collisions = function(contacts){
-  debugger;
-  had_collision = false;
-  for (var i=0; i<contacts.length; i++){
-    if (this.colliding(contacts[i])){
-      this.collision(contacts[i],0.9);  
-    }
-  }
-  debugger;
 }
 
 Simulation.prototype.ode = function(x0, xFinal,t, t_end){
   
-  if (this.colll) debugger;
   this.runge_katta(x0, xFinal, t, this.time_step);
   this.compare_error(x0,t);
-  this.overlaps = this.collision_detection(); 
-  if (this.overlaps.length>0){
-    for (var i=0;i<xFinal.length;i++){
-      //xFinal[i] = x0[i];
-    }
-    this.find_all_collisions(this.overlaps); 
-    
-  }
+
 }
 
 Simulation.prototype.compare_error = function(x0, t){
@@ -622,6 +541,7 @@ Simulation.prototype.pt_velocity = function(rb, p){
 }
 
 Simulation.prototype.colliding = function(c){
+  debugger;
   threshold = 0.000001;
   padot = this.pt_velocity(c.a, c.p);
   pbdot = this.pt_velocity(c.b, c.p);
@@ -668,12 +588,94 @@ Simulation.prototype.draw = function(){
 
 }
 
+Simulation.prototype.check_collisions = function(contacts){
+  debugger;
+  do{
+    had_collision = false;
+    for (var i=0; i<contacts.length; i++){
+      if (this.colliding(contacts[i])){
+        this.collision(contacts[i],0.5);  
+        had_collision=true;
+      }
+    }
+  } while(had_collision)
+  debugger;
+}
+
+Simulation.prototype.Dxdt = function(t, x, xdot, cont=true){ 
+
+	this.array_to_bodies(x);
+	for (var i=0; i<this.n_bodies; i++){
+    if (cont)
+		  this.compute_force_and_torque(t, this.rigid_bodies[i]);
+		this.DdtStateToArray(this.rigid_bodies[i], xdot, i*this.state_size);
+	}
+
+}
+
+Simulation.prototype.runge_katta = function(x0, xFinal, current_time, stepsize, cont=true){
+    var array_size = this.n_bodies * this.state_size;
+    var temp = new Array(array_size);
+		var k1 = new Array(array_size);
+    var k2 = new Array(array_size);
+    var k3 = new Array(array_size);
+    var k4 = new Array(array_size); 
+  	this.Dxdt(current_time, x0, k1, cont);
+    for (var i=0; i<array_size; i++){
+      k1[i] = stepsize*k1[i];
+    }
+
+    // compute k2
+    for (var i=0;i<array_size;i++){
+      temp[i] = x0[i] + k1[i]/2;
+    }
+    this.Dxdt(current_time+stepsize/2, temp, k2, cont);
+    for (var i=0; i<array_size; i++){
+      k2[i] = stepsize*k2[i];
+    }
+
+    // compute k3
+    for (var i=0;i<array_size;i++){
+      temp[i] = x0[i] + k2[i]/2;
+    }
+    this.Dxdt(current_time+stepsize/2, temp, k3, cont);
+    for (var i=0; i<array_size; i++){
+      k3[i] = stepsize*k3[i];
+    }
+
+    // compute k4
+    for (var i=0;i<array_size;i++){
+      temp[i] = x0[i] + k3[i];
+    }
+    this.Dxdt(current_time+stepsize, temp, k4, cont);
+    for (var i=0; i<array_size; i++){
+      k4[i] = stepsize*k4[i];
+    }
+
+    // compute xFinal
+    for (var i=0;i<array_size;i++){
+      xFinal[i] = x0[i] + (1/6)*k1[i] + (1/3)*k2[i] + (1/3)*k3[i] + (1/6)*k4[i];
+    }
+
+}
+
 Simulation.prototype.make_step = function(t){
 	for (var i=0;i<this.state_size*this.n_bodies;i++){
 		this.x0[i] = this.xFinal[i];
 	}
 	this.ode(this.x0, this.xFinal, t, t+simulation.time_step);
 	this.array_to_bodies(this.xFinal);
+  
+  this.overlaps = this.collision_detection(); 
+  if(this.overlaps.length>0){
+    this.array_to_bodies(this.x0);
+    this.check_collisions(this.overlaps); 
+    debugger;
+    this.bodies_to_array(this.x0);
+    this.runge_katta(this.x0, this.xFinal, t, this.time_step, false);
+    this.array_to_bodies(this.xFinal);
+  }
+
 	this.draw();
 	this.steps_taken = this.steps_taken+1;
 	setTimeout(function(simulation,t){ simulation.make_step(t)}, simulation.time_step*1000, this,t+simulation.time_step);
