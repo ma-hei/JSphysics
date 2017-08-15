@@ -191,23 +191,26 @@ Simulation.prototype.cross_product = function(a,b){
 
 }
 
-Simulation.prototype.compute_force_and_torque = function(t, rb){
+Simulation.prototype.compute_force_and_torque = function(t, rb, cont){
+  if (cont){
+    if (!rb.floor && t<0.1){
+  	  var f = [0,-9,0];
+  	  var r = new Array(3);
+  	  r[0] = -0.7;
+  	  r[1] = 1;
+  	  r[2] = 0;
 
-  if (!rb.floor && t<0.1){
-  	var f = [0,-9,0];
-  	var r = new Array(3);
-  	r[0] = 0.7;
-  	r[1] = 1;
-  	r[2] = 0;
-
-  	rb.torque = this.cross_product(r,f);   
-	  rb.force = f;
-  	return;
+  	  rb.torque = this.cross_product(r,f);   
+	    rb.force = f;
+  	  return;
+    } else {
+      rb.torque = [0,0,0];
+      rb.force = [0,-9,0];
+    }
   } else {
+    rb.force = [0,0,0];
     rb.torque = [0,0,0];
-    rb.force = [0,-9,0];
-  } 
-  
+  }
 }
 
 Simulation.prototype.DdtStateToArray = function(rb, xdot, idx){
@@ -292,7 +295,6 @@ Simulation.prototype.euler_step_2 = function(x0, xFinal, t, t_end){
 }
 
 Simulation.prototype.collision = function(c, epsilon){
-  debugger;
   padot = this.pt_velocity(c.a, c.p);
   pbdot = this.pt_velocity(c.b, c.p);
   n = c.n;
@@ -444,6 +446,31 @@ Simulation.prototype.get_projection_min = function(rb, axis){
   return min_idx;
 }
 
+Simulation.prototype.get_overlapping_above = function(rb, axis, min){
+  vertices = new Array();
+  axis = this.normalize_axis(axis);
+  for (var i=0; i<rb.translated_vertices.length; i++){
+    p = this.dot_product(axis, rb.translated_vertices[i]);
+    if (p>min){
+      vertices.push(i);
+    }
+  } 
+  return vertices;
+}
+
+Simulation.prototype.get_overlapping_below = function(rb, axis, max){
+  vertices = new Array();
+  axis = this.normalize_axis(axis);
+  for (var i=0; i<rb.translated_vertices.length; i++){
+    p = this.dot_product(axis, rb.translated_vertices[i]);
+    if (p<max){
+      vertices.push(i);
+    }
+  } 
+  return vertices;
+}
+
+
 Simulation.prototype.get_colliding_vertex = function(m, f, smallest){
  pm = this.project(m, smallest);
  pf = this.project(f, smallest);
@@ -454,6 +481,18 @@ Simulation.prototype.get_colliding_vertex = function(m, f, smallest){
   idx = this.get_projection_min(m, smallest);
  }
  return idx; 
+}
+
+Simulation.prototype.get_colliding_vertices = function(m,f,smallest){
+  pm = this.project(m, smallest);
+  pf = this.project(f, smallest);
+  if (pm[1]<pf[1]){
+    idxs = this.get_overlapping_above(m, smallest, pf[0]);
+  }
+  else{
+    idxs = this.get_overlapping_below(m, smallest, pf[1]);
+  }
+  return idxs; 
 }
 
 Simulation.prototype.check_overlap = function(a,b, idx_a, idx_b){
@@ -493,13 +532,18 @@ Simulation.prototype.check_overlap = function(a,b, idx_a, idx_b){
     }
   }
   idx = this.get_colliding_vertex(penetrating_body, penetrated_body, smallest);
-  c = new Contact();
-  c.a = penetrating_body===a ? a : b;
-  c.b = penetrated_body===a ? a : b;
-  c.p = penetrating_body.translated_vertices[idx];
-  c.n = this.make_collision_normal_point_out(penetrated_body, penetrating_body.translated_vertices[idx], smallest);
-  c.n = this.normalize_vector(c.n); 
-  return [true, c];
+  test = this.get_colliding_vertices(penetrating_body, penetrated_body, smallest);
+  overlaps = new Array();
+  for (var i=0;i<test.length;i++){
+    c = new Contact();
+    c.a = penetrating_body===a ? a : b;
+    c.b = penetrated_body===a ? a : b;
+    c.p = penetrating_body.translated_vertices[test[i]];
+    c.n = this.make_collision_normal_point_out(penetrated_body, penetrating_body.translated_vertices[test[i]], smallest);
+    c.n = this.normalize_vector(c.n); 
+    overlaps.push(c);
+  }
+  return [true, overlaps];
 }
 
 Simulation.prototype.normalize_vector = function(v){
@@ -529,7 +573,9 @@ Simulation.prototype.collision_detection = function(){
     for (var k=i+1;k<this.n_bodies;k++){
       res = this.check_overlap(this.rigid_bodies[i], this.rigid_bodies[k], i, k);
       if (res[0]==true){
-        arr.push(res[1]);
+        for (var j=0;j<res[1].length;j++){
+          arr.push(res[1][j]);
+        }
       }
     }
   }
@@ -541,7 +587,6 @@ Simulation.prototype.pt_velocity = function(rb, p){
 }
 
 Simulation.prototype.colliding = function(c){
-  debugger;
   threshold = 0.000001;
   padot = this.pt_velocity(c.a, c.p);
   pbdot = this.pt_velocity(c.b, c.p);
@@ -589,25 +634,22 @@ Simulation.prototype.draw = function(){
 }
 
 Simulation.prototype.check_collisions = function(contacts){
-  debugger;
   do{
     had_collision = false;
     for (var i=0; i<contacts.length; i++){
       if (this.colliding(contacts[i])){
-        this.collision(contacts[i],0.5);  
+        this.collision(contacts[i],0.6);  
         had_collision=true;
       }
     }
   } while(had_collision)
-  debugger;
 }
 
 Simulation.prototype.Dxdt = function(t, x, xdot, cont=true){ 
 
 	this.array_to_bodies(x);
 	for (var i=0; i<this.n_bodies; i++){
-    if (cont)
-		  this.compute_force_and_torque(t, this.rigid_bodies[i]);
+		this.compute_force_and_torque(t, this.rigid_bodies[i], cont);
 		this.DdtStateToArray(this.rigid_bodies[i], xdot, i*this.state_size);
 	}
 
@@ -629,11 +671,13 @@ Simulation.prototype.runge_katta = function(x0, xFinal, current_time, stepsize, 
     for (var i=0;i<array_size;i++){
       temp[i] = x0[i] + k1[i]/2;
     }
+    debugger;
     this.Dxdt(current_time+stepsize/2, temp, k2, cont);
     for (var i=0; i<array_size; i++){
       k2[i] = stepsize*k2[i];
     }
 
+    debugger;
     // compute k3
     for (var i=0;i<array_size;i++){
       temp[i] = x0[i] + k2[i]/2;
@@ -643,6 +687,7 @@ Simulation.prototype.runge_katta = function(x0, xFinal, current_time, stepsize, 
       k3[i] = stepsize*k3[i];
     }
 
+    debugger;
     // compute k4
     for (var i=0;i<array_size;i++){
       temp[i] = x0[i] + k3[i];
@@ -651,12 +696,12 @@ Simulation.prototype.runge_katta = function(x0, xFinal, current_time, stepsize, 
     for (var i=0; i<array_size; i++){
       k4[i] = stepsize*k4[i];
     }
-
+    debugger;
     // compute xFinal
     for (var i=0;i<array_size;i++){
       xFinal[i] = x0[i] + (1/6)*k1[i] + (1/3)*k2[i] + (1/3)*k3[i] + (1/6)*k4[i];
     }
-
+    debugger;
 }
 
 Simulation.prototype.make_step = function(t){
